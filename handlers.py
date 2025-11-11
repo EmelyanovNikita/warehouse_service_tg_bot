@@ -43,6 +43,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     
     return MAIN_MENU
 
+# ===== ГЛАВНОЕ МЕНЮ =====
 async def back_to_main(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Вернуться в главное меню"""
     query = update.callback_query
@@ -55,7 +56,8 @@ async def back_to_main(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    await query.reply_text(
+    # ИСПРАВЛЕНИЕ: используем message.reply_text вместо reply_text
+    await query.message.reply_text(
         "🏭 Главное меню управления складом\nВыберите действие:",
         reply_markup=reply_markup
     )
@@ -78,60 +80,14 @@ async def get_products_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    await query.reply_text(
+    # ИСПРАВЛЕНИЕ: используем message.reply_text вместо reply_text
+    await query.message.reply_text(
         "📦 **Получить продукты**\nВыберите тип запроса:",
         parse_mode='Markdown',
         reply_markup=reply_markup
     )
     
     return GET_PRODUCTS_MENU
-
-def format_products_message(products: List[Dict], title: str = "Продукты") -> List[str]:
-    """
-    Форматирует список продуктов в сообщения для Telegram
-    Возвращает список сообщений (если не помещается в одно)
-    """
-    messages = []
-    current_message = f"📦 {title}:\n\n"
-    
-    for product in products:
-        # Извлекаем данные в переменные
-        product_id = str(product.get('id', 'N/A'))
-        product_name = product.get('name', 'Без названия')
-        product_sku = product.get('sku', 'Не указан')
-        product_category = product.get('category_name', 'Не указана')
-        product_quantity = product.get('total_quantity', 0)
-        product_price = product.get('base_price', 0)
-        
-        # Форматируем цену
-        formatted_price = f"${product_price:.2f}"
-        
-        # Создаем разделитель
-        separator = "─" * 20
-        
-        # Формируем текст продукта из переменных
-        product_text = (
-            f"🆔 ID: {product_id}\n"
-            f"📝 Название: {product_name}\n"
-            f"🏷️ Артикул: {product_sku}\n"
-            f"📂 Категория: {product_category}\n"
-            f"📊 Количество: {product_quantity} шт.\n"
-            f"💰 Цена: {formatted_price}\n"
-            f"{separator}\n"
-        )
-        
-        # Проверяем не превысим ли лимит Telegram
-        if len(current_message) + len(product_text) > 3500:
-            messages.append(current_message)
-            current_message = "📦 Продолжение:\n\n" + product_text
-        else:
-            current_message += product_text
-    
-    # Добавляем последнее сообщение
-    if current_message and current_message != f"📦 {title}:\n\n":
-        messages.append(current_message)
-    
-    return messages
 
 async def get_all_products(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Получить все продукты - простая версия с пошаговым выводом"""
@@ -145,49 +101,15 @@ async def get_all_products(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     )
     
     if not products:
-        await query.reply_text("❌ Нет продуктов на складе")
+        await query.message.reply_text("❌ Нет продуктов на складе")
         return GET_PRODUCTS_MENU
 
-    # Формируем сообщения
-    messages = []
-    current_message = "📦 Продукты на складе:\n\n"
-    
-    for product in products:
-        # Сначала присваиваем все значения переменным
-        product_id = str(product.get('id', 'N/A'))
-        product_name = product.get('name', 'Без названия')
-        product_sku = product.get('sku', 'Не указан')
-        product_category = product.get('category_name', 'Не указана')
-        product_quantity = product.get('total_quantity', 0)
-        product_price = product.get('base_price', 0)
-        
-        # Форматируем цену
-        formatted_price = f"${product_price:.2f}"
-        
-        # Создаем разделитель
-        separator = "─" * 20
-        
-        # Теперь формируем итоговый текст из переменных
-        product_text = (
-            f"ID: {product_id}\n"
-            f"Название: {product_name}\n"
-            f"Артикул: {product_sku}\n"
-            f"Категория: {product_category}\n"
-            f"Количество: {product_quantity}\n"
-            f"Цена: {formatted_price}\n"
-            f"{separator}\n"
-        )
-        
-        # Если добавляя этот продукт превысим лимит - сохраняем текущее сообщение
-        if len(current_message) + len(product_text) > 3500:
-            messages.append(current_message)
-            current_message = "📦 Продолжение:\n\n" + product_text
-        else:
-            current_message += product_text
-    
-    # Добавляем последнее сообщение
-    if current_message:
-        messages.append(current_message)
+    # Генерируем статистику
+    statistics = get_products_statistics(products)
+    await query.message.reply_text(statistics, parse_mode='Markdown')
+
+    # Формируем сообщения с помощью новой функции
+    messages = format_products_list(products, "Все продукты на складе")
     
     # Сохраняем все сообщения в контексте
     context.user_data['product_messages'] = messages
@@ -227,6 +149,7 @@ async def show_next_product_message(update: Update, context: ContextTypes.DEFAUL
         # Если это callback от кнопки
         await update.callback_query.message.reply_text(
             current_message, 
+            parse_mode='Markdown',
             reply_markup=reply_markup
         )
         await update.callback_query.answer()
@@ -234,10 +157,12 @@ async def show_next_product_message(update: Update, context: ContextTypes.DEFAUL
         # Если это текстовое сообщение
         await update.message.reply_text(
             current_message,
+            parse_mode='Markdown',
             reply_markup=reply_markup
         )
     
     return GET_PRODUCTS_MENU
+
 
 async def show_more_products(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Показать следующую часть продуктов"""
@@ -255,7 +180,7 @@ async def search_products_start(update: Update, context: ContextTypes.DEFAULT_TY
     query = update.callback_query
     await query.answer()
     
-    await query.reply_text(
+    await query.message.reply_text(
         "🔍 **Поиск продуктов**\n\n"
         "Введите название продукта или часть названия:\n"
         "• Можно вводить неполное название\n" 
@@ -285,9 +210,9 @@ async def search_products_process(update: Update, context: ContextTypes.DEFAULT_
         # Используем встроенный поиск API
         products = await api_client.get_products(
             search=search_query,
-            limit=50,  # Ограничиваем количество результатов
-            include_inactive=False,  # Только активные товары
-            include_out_of_stock=True  # Показываем даже отсутствующие
+            limit=50,
+            include_inactive=False,
+            include_out_of_stock=True
         )
         
         if not products:
@@ -327,42 +252,32 @@ async def search_products_process(update: Update, context: ContextTypes.DEFAULT_
             await search_message.reply_text(message)
             return await get_products_menu_from_message(update, context)
         
-        # Формируем сообщение с результатами
+        # Генерируем статистику
+        statistics = get_products_statistics(products)
+        
+        # Формируем сообщение с результатами с помощью новой функции
         if len(products) == 1:
-            message = f"✅ Найден 1 продукт по запросу \"{search_query}\":\n\n"
+            title = f"Найден 1 продукт по запросу \"{search_query}\""
         else:
-            message = f"✅ Найдено {len(products)} продуктов по запросу \"{search_query}\":\n\n"
+            title = f"Найдено {len(products)} продуктов по запросу \"{search_query}\""
         
-        for product in products:
-            # Определяем эмодзи статуса
-            status_emoji = "✅" if product.get('is_active', True) else "❌"
-            stock_emoji = "📦" if product.get('total_quantity', 0) > 0 else "📭"
-            
-            message += (
-                f"{status_emoji}{stock_emoji} ID: {product.get('id', 'N/A')}\n"
-                f"📝 Название: {product.get('name', 'Без названия')}\n"
-                f"🏷️ Артикул: {product.get('sku', 'Не указан')}\n"
-                f"📂 Категория: {product.get('category_name', 'Не указана')}\n"
-                f"📊 Количество: {product.get('total_quantity', 0)} шт.\n"
-                f"💰 Цена: ${product.get('base_price', 0):.2f}\n"
-                "─" * 30 + "\n"
-            )
+        messages = format_products_list(products, title)
         
-        # Если много результатов, предлагаем уточнить запрос
-        if len(products) >= 50:
-            message += f"\n💡 Найдено много результатов. Уточните запрос для более точного поиска."
+        # Сначала отправляем статистику
+        await search_message.reply_text(statistics, parse_mode='Markdown')
         
-        # Обрезаем если слишком длинное
-        if len(message) > 4000:
-            message = message[:3900] + "\n\n... (результаты обрезаны, уточните запрос)"
-        
-        keyboard = [
-            [InlineKeyboardButton("🔍 Новый поиск", callback_data="search_products")],
-            [InlineKeyboardButton("🔙 В меню", callback_data="back_to_products_menu")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        await search_message.reply_text(message, reply_markup=reply_markup)
+        # Затем отправляем все сообщения с продуктами
+        for i, message in enumerate(messages):
+            if i == len(messages) - 1:
+                # Последнее сообщение с кнопками
+                keyboard = [
+                    [InlineKeyboardButton("🔍 Новый поиск", callback_data="search_products")],
+                    [InlineKeyboardButton("🔙 В меню", callback_data="back_to_products_menu")]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                await search_message.reply_text(message, parse_mode='Markdown', reply_markup=reply_markup)
+            else:
+                await search_message.reply_text(message, parse_mode='Markdown')
         
     except Exception as e:
         logger.error(f"Search error: {e}")
@@ -405,7 +320,7 @@ async def advanced_search_start(update: Update, context: ContextTypes.DEFAULT_TY
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    await query.reply_text(
+    await query.message.reply_text(
         "🎯 **Расширенный поиск**\n\n"
         "Выберите тип поиска:",
         parse_mode='Markdown',
@@ -419,7 +334,7 @@ async def search_by_category_start(update: Update, context: ContextTypes.DEFAULT
     query = update.callback_query
     await query.answer()
     
-    await query.reply_text(
+    await query.message.reply_text(
         f"📂 **Поиск по категории**\n\n"
         f"Введите название категории:\n\n"
         f"Пример: Thermocups",
@@ -439,7 +354,7 @@ async def search_by_category_process(update: Update, context: ContextTypes.DEFAU
     search_message = await update.message.reply_text(f"📂 Ищу категорию \"{category_query}\"...")
     
     try:
-        # ПРОСТО API запрос с параметром category
+        # API запрос с параметром category
         products = await api_client.get_products(
             category=category_query,
             limit=50,
@@ -451,62 +366,30 @@ async def search_by_category_process(update: Update, context: ContextTypes.DEFAU
             await search_message.reply_text(f"❌ В категории \"{category_query}\" товаров не найдено")
             return await get_products_menu_from_message(update, context)
         
-        message = f"📂 Продукты в категории \"{category_query}\":\n\n"
+        # Генерируем статистику
+        statistics = get_products_statistics(products)
         
-        for product in products:
-            # Заполняем данные через переменные
-            product_id = product.get('id', 'N/A')
-            product_name = product.get('name', 'Без названия')
-            product_quantity = product.get('total_quantity', 0)
-            product_price = product.get('base_price', 0)
-            
-            # Форматируем цену
-            formatted_price = f"${product_price:.2f}"
-            
-            # Создаем разделитель
-            separator = "─" * 25
-            
-            # Формируем сообщение из переменных
-            message += (
-                f"🆔 ID: {product_id}\n"
-                f"📝 Название: {product_name}\n"
-                f"📊 Количество: {product_quantity} шт.\n"
-                f"💰 Цена: {formatted_price}\n"
-                f"{separator}\n"
-            )
+        # Используем новую функцию для форматирования
+        messages = format_products_list(products, f"Продукты в категории \"{category_query}\"")
         
-        if len(message) > 4000:
-            message = message[:3900] + "\n\n... (результаты обрезаны)"
+        # Сначала отправляем статистику
+        await search_message.reply_text(statistics)
         
-        keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="back_to_products_menu")]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        await search_message.reply_text(message, reply_markup=reply_markup)
+        # Затем отправляем все сообщения с продуктами
+        for i, message in enumerate(messages):
+            if i == len(messages) - 1:
+                # Последнее сообщение с кнопками
+                keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="back_to_products_menu")]]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                await search_message.reply_text(message, reply_markup=reply_markup)
+            else:
+                await search_message.reply_text(message)
         
     except Exception as e:
         logger.error(f"Category search error: {e}")
         await search_message.reply_text("❌ Ошибка при поиске по категории")
     
     return GET_PRODUCTS_MENU
-
-async def search_by_price_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Поиск по диапазону цен"""
-    query = update.callback_query
-    await query.answer()
-    
-    await query.reply_text(
-        "💰 **Поиск по цене**\n\n"
-        "Введите диапазон цен в формате:\n"
-        "`мин_цена - макс_цена`\n\n"
-        "Примеры:\n"
-        "`0 - 100` - товары до $100\n"
-        "`50 - 200` - товары от $50 до $200\n"
-        "`1000 - ` - товары от $1000\n"
-        "` - 50` - товары до $50",
-        parse_mode='Markdown'
-    )
-    
-    return ENTER_SEARCH_QUERY
 
 async def search_by_price_process(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Обработать поиск по цене через API"""
@@ -524,7 +407,7 @@ async def search_by_price_process(update: Update, context: ContextTypes.DEFAULT_
             await search_message.reply_text("❌ Неверный формат. Используйте: мин_цена - макс_цена")
             return ENTER_SEARCH_QUERY
         
-        # ПРОСТО API запрос с параметрами min_price и max_price
+        # API запрос с параметрами min_price и max_price
         products = await api_client.get_products(
             min_price=min_price,
             max_price=max_price,
@@ -553,24 +436,24 @@ async def search_by_price_process(update: Update, context: ContextTypes.DEFAULT_
         elif max_price:
             range_text = f"до ${max_price}"
         
-        message = f"💰 Продукты в диапазоне {range_text}:\n\n"
+        # Генерируем статистику
+        statistics = get_products_statistics(products)
         
-        for product in products:
-            message += (
-                f"🆔 ID: {product.get('id', 'N/A')}\n"
-                f"📝 Название: {product.get('name', 'Без названия')}\n"
-                f"💰 Цена: ${product.get('base_price', 0):.2f}\n"
-                f"📊 Количество: {product.get('total_quantity', 0)} шт.\n"
-                "─" * 25 + "\n"
-            )
+        # Используем новую функцию для форматирования
+        messages = format_products_list(products, f"Продукты в диапазоне {range_text}")
         
-        if len(message) > 4000:
-            message = message[:3900] + "\n\n... (результаты обрезаны)"
+        # Сначала отправляем статистику
+        await search_message.reply_text(statistics)
         
-        keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="back_to_products_menu")]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        await search_message.reply_text(message, reply_markup=reply_markup)
+        # Затем отправляем все сообщения с продуктами
+        for i, message in enumerate(messages):
+            if i == len(messages) - 1:
+                # Последнее сообщение с кнопками
+                keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="back_to_products_menu")]]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                await search_message.reply_text(message, reply_markup=reply_markup)
+            else:
+                await search_message.reply_text(message)
         
     except ValueError:
         await search_message.reply_text("❌ Неверный формат цен. Используйте числа")
@@ -586,10 +469,10 @@ async def search_in_stock_only(update: Update, context: ContextTypes.DEFAULT_TYP
     query = update.callback_query
     await query.answer()
     
-    search_message = await query.reply_text("📦 Ищу товары в наличии...")
+    search_message = await query.message.reply_text("📦 Ищу товары в наличии...")
     
     try:
-        # ПРОСТО API запрос с параметром include_out_of_stock=False
+        # API запрос с параметром include_out_of_stock=False
         products = await api_client.get_products(
             include_out_of_stock=False,  # Только товары в наличии
             limit=50,
@@ -600,30 +483,49 @@ async def search_in_stock_only(update: Update, context: ContextTypes.DEFAULT_TYP
             await search_message.reply_text("❌ Нет товаров в наличии")
             return GET_PRODUCTS_MENU
         
-        message = "📦 **Товары в наличии:**\n\n"
+        # Генерируем статистику
+        statistics = get_products_statistics(products)
         
-        for product in products:
-            message += (
-                f"🆔 ID: {product.get('id', 'N/A')}\n"
-                f"📝 Название: {product.get('name', 'Без названия')}\n"
-                f"📊 Количество: {product.get('total_quantity', 0)} шт.\n"
-                f"💰 Цена: ${product.get('base_price', 0):.2f}\n"
-                "─" * 25 + "\n"
-            )
+        # Используем новую функцию для форматирования
+        messages = format_products_list(products, "Товары в наличии")
         
-        if len(message) > 4000:
-            message = message[:3900] + "\n\n... (результаты обрезаны)"
+        # Сначала отправляем статистику
+        await search_message.reply_text(statistics)
         
-        keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="back_to_products_menu")]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        await search_message.reply_text(message, reply_markup=reply_markup)
+        # Затем отправляем все сообщения с продуктами
+        for i, message in enumerate(messages):
+            if i == len(messages) - 1:
+                # Последнее сообщение с кнопками
+                keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="back_to_products_menu")]]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                await search_message.reply_text(message, reply_markup=reply_markup)
+            else:
+                await search_message.reply_text(message)
         
     except Exception as e:
         logger.error(f"In-stock search error: {e}")
         await search_message.reply_text("❌ Ошибка при поиске товаров в наличии")
     
     return GET_PRODUCTS_MENU
+
+async def search_by_price_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Поиск по диапазону цен"""
+    query = update.callback_query
+    await query.answer()
+    
+    await query.message.reply_text(
+        "💰 **Поиск по цене**\n\n"
+        "Введите диапазон цен в формате:\n"
+        "`мин_цена - макс_цена`\n\n"
+        "Примеры:\n"
+        "`0 - 100` - товары до $100\n"
+        "`50 - 200` - товары от $50 до $200\n"
+        "`1000 - ` - товары от $1000\n"
+        "` - 50` - товары до $50",
+        parse_mode='Markdown'
+    )
+    
+    return ENTER_SEARCH_QUERY
 
 async def get_thermocup_by_id_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Начать получение термокружки по ID"""
@@ -633,7 +535,7 @@ async def get_thermocup_by_id_start(update: Update, context: ContextTypes.DEFAUL
     # ДОБАВЬ ЭТУ СТРОЧКУ ↓
     context.user_data['request_type'] = 'thermocup'
     
-    await query.reply_text(
+    await query.message.reply_text(
         "☕ **Получить термокружку по ID**\n\n"
         "Введите ID термокружки:"
     )
@@ -648,12 +550,145 @@ async def get_product_by_id_start(update: Update, context: ContextTypes.DEFAULT_
     # ДОБАВЬ ЭТУ СТРОЧКУ ↓
     context.user_data['request_type'] = 'product'
     
-    await query.reply_text(
+    await query.message.reply_text(
         "🆔 **Получить продукт по ID**\n\n"
         "Введите ID продукта:"
     )
     
     return ENTER_PRODUCT_ID
+
+def format_single_product(product: Dict) -> str:
+    """
+    Форматирует один продукт в текст для Telegram со всеми параметрами
+    
+    Args:
+        product: Словарь с данными продукта
+        
+    Returns:
+        str: Отформатированный текст продукта
+    """
+    # Извлекаем все данные в переменные
+    product_id = str(product.get('id', 'N/A'))
+    product_name = product.get('name', 'Без названия')
+    product_sku = product.get('sku', 'Не указан')
+    product_category = product.get('category_name', 'Не указана')
+    product_category_id = product.get('category_id', 'N/A')
+    product_quantity = product.get('total_quantity', 0)
+    product_price = product.get('base_price', 0)
+    product_is_active = product.get('is_active', True)
+    product_created_at = product.get('created_at', 'Не указана')
+    product_updated_at = product.get('updated_at', 'Не указана')
+    product_path_to_photo = product.get('path_to_photo', 'Не указано')
+    product_num_reserved = product.get('num_reserved_goods', 0)
+    
+    # Форматируем значения
+    formatted_price = f"${float(product_price):.2f}" if product_price else "$0.00"
+    active_status = "✅ Активен" if product_is_active else "❌ Неактивен"
+    reserved_info = f"{product_num_reserved} шт." if product_num_reserved else "0 шт."
+    
+    # Форматируем даты (если они есть)
+    created_date = product_created_at[:10] if product_created_at and len(product_created_at) >= 10 else "Не указана"
+    updated_date = product_updated_at[:10] if product_updated_at and len(product_updated_at) >= 10 else "Не указана"
+    
+    # Экранируем специальные символы для Markdown
+    product_name_escaped = product_name.replace('_', '\\_').replace('*', '\\*').replace('`', '\\`')
+    product_sku_escaped = product_sku.replace('_', '\\_').replace('*', '\\*').replace('`', '\\`') if product_sku else "Не указан"
+    product_category_escaped = product_category.replace('_', '\\_').replace('*', '\\*').replace('`', '\\`')
+    
+    # Формируем текст продукта со всеми параметрами (БЕЗ Markdown разметки)
+    product_text = (
+        f"🆔 ID: {product_id}\n"
+        f"📝 Название: {product_name_escaped}\n"
+        f"🏷️ Артикул: {product_sku_escaped}\n"
+        f"📂 Категория: {product_category_escaped} (ID: {product_category_id})\n"
+        f"💰 Базовая цена: {formatted_price}\n"
+        f"📊 Общее количество: {product_quantity} шт.\n"
+        f"🔒 Зарезервировано: {reserved_info}\n"
+        f"📋 Статус: {active_status}\n"
+        f"🖼️ Фото: {product_path_to_photo}\n"
+        f"📅 Создан: {created_date}\n"
+        f"🔄 Обновлен: {updated_date}\n"
+        f"────────────────────\n"
+    )
+    
+    return product_text
+
+def format_products_list(products: List[Dict], title: str = "Продукты", max_length: int = 3500) -> List[str]:
+    """
+    Форматирует список продуктов в сообщения для Telegram
+    
+    Args:
+        products: Список словарей с продуктами
+        title: Заголовок для сообщения
+        max_length: Максимальная длина сообщения
+        
+    Returns:
+        List[str]: Список сообщений (если не помещается в одно)
+    """
+    if not products:
+        return ["📦 Список продуктов пуст"]
+    
+    messages = []
+    current_message = f"📦 **{title}**\n\n"
+    
+    for product in products:
+        # Форматируем один продукт
+        product_text = format_single_product(product)
+        
+        # Проверяем не превысим ли лимит Telegram
+        if len(current_message) + len(product_text) > max_length:
+            messages.append(current_message)
+            current_message = "📦 **Продолжение:**\n\n" + product_text
+        else:
+            current_message += product_text
+    
+    # Добавляем последнее сообщение
+    if current_message and current_message != f"📦 **{title}**\n\n":
+        messages.append(current_message)
+    
+    return messages
+
+def get_products_statistics(products: List[Dict]) -> str:
+    """
+    Генерирует статистику по списку продуктов
+    
+    Args:
+        products: Список продуктов
+        
+    Returns:
+        str: Текст со статистикой
+    """
+    if not products:
+        return "📊 Статистика: нет данных"
+    
+    total_products = len(products)
+    active_products = sum(1 for p in products if p.get('is_active', True))
+    out_of_stock = sum(1 for p in products if p.get('total_quantity', 0) <= 0)
+    total_quantity = sum(p.get('total_quantity', 0) for p in products)
+    total_reserved = sum(p.get('num_reserved_goods', 0) for p in products)
+    
+    # Находим самый дорогой и дешевый товар
+    if products:
+        prices = [float(p.get('base_price', 0)) for p in products if p.get('base_price') is not None]
+        max_price = max(prices) if prices else 0
+        min_price = min(prices) if prices else 0
+        avg_price = sum(prices) / len(prices) if prices else 0
+    else:
+        max_price = min_price = avg_price = 0
+    
+    statistics = (
+        f"📊 Статистика поиска:\n"
+        f"• Всего найдено: {total_products} товаров\n"
+        f"• Активных: {active_products}\n"
+        f"• Неактивных: {total_products - active_products}\n"
+        f"• Нет в наличии: {out_of_stock}\n"
+        f"• Общее количество: {total_quantity} шт.\n"
+        f"• Зарезервировано: {total_reserved} шт.\n"
+        f"• Цены: от ${min_price:.2f} до ${max_price:.2f}\n"
+        f"• Средняя цена: ${avg_price:.2f}"
+    )
+    
+    return statistics
 
 async def handle_product_id_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Обработать ввод ID (универсальный обработчик)"""
@@ -705,7 +740,8 @@ async def add_products_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    await query.reply_text(
+    # ИСПРАВЛЕНИЕ: используем message.reply_text вместо reply_text
+    await query.message.reply_text(
         "➕ **Добавить продукты**\nВыберите тип продукта:",
         parse_mode='Markdown',
         reply_markup=reply_markup
@@ -713,12 +749,13 @@ async def add_products_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     
     return ADD_PRODUCT_MENU
 
+
 async def add_thermocup_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Начать добавление термокружки"""
     query = update.callback_query
     await query.answer()
     
-    await query.reply_text(
+    await query.message.reply_text(
         "☕ **Добавить новую термокружку**\n\n"
         "Введите данные в формате:\n"
         "`Название | Категория ID | Цена | Количество | Склад ID | Объем(мл) | Цвет | Бренд`\n\n"
@@ -790,7 +827,8 @@ async def update_products_menu(update: Update, context: ContextTypes.DEFAULT_TYP
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    await query.reply_text(
+    # ИСПРАВЛЕНИЕ: используем message.reply_text вместо reply_text
+    await query.message.reply_text(
         "🔄 **Обновить продукты**\nВыберите действие:",
         parse_mode='Markdown',
         reply_markup=reply_markup
@@ -798,12 +836,36 @@ async def update_products_menu(update: Update, context: ContextTypes.DEFAULT_TYP
     
     return UPDATE_PRODUCT_MENU
 
+# Добавьте эту вспомогательную функцию для обработки возврата в меню продуктов
+async def back_to_products_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Вернуться в меню продуктов из callback"""
+    query = update.callback_query
+    await query.answer()
+    
+    keyboard = [
+        [InlineKeyboardButton("📋 Все продукты", callback_data="all_products")],
+        [InlineKeyboardButton("🔍 Быстрый поиск", callback_data="search_products")],
+        [InlineKeyboardButton("🎯 Расширенный поиск", callback_data="advanced_search")],
+        [InlineKeyboardButton("🆔 По ID продукта", callback_data="by_id")],
+        [InlineKeyboardButton("☕ Термокружка по ID", callback_data="thermocup_by_id")],
+        [InlineKeyboardButton("🔙 Назад", callback_data="back_to_main")],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.message.reply_text(
+        "📦 **Получить продукты**\nВыберите тип запроса:",
+        parse_mode='Markdown',
+        reply_markup=reply_markup
+    )
+    
+    return GET_PRODUCTS_MENU
+
 async def update_thermocup_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Начать обновление термокружки"""
     query = update.callback_query
     await query.answer()
     
-    await query.reply_text(
+    await query.message.reply_text(
         "✏️ **Обновить термокружку**\n\n"
         "Введите ID термокружки для обновления:"
     )
@@ -875,7 +937,7 @@ async def update_reserved_start(update: Update, context: ContextTypes.DEFAULT_TY
     query = update.callback_query
     await query.answer()
     
-    await query.reply_text(
+    await query.message.reply_text(
         "📦 **Обновить количество зарезервированного товара**\n\n"
         "Введите ID продукта:"
     )
@@ -933,7 +995,7 @@ async def update_stock_start(update: Update, context: ContextTypes.DEFAULT_TYPE)
     query = update.callback_query
     await query.answer()
     
-    await query.reply_text(
+    await query.message.reply_text(
         "🏭 **Обновить количество товара на складе**\n\n"
         "Введите ID продукта:"
     )
@@ -1006,20 +1068,24 @@ async def update_stock_quantity_process(update: Update, context: ContextTypes.DE
     
     return await update_products_menu_from_message(update, context)
 
-# ===== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =====
-async def get_products_menu_from_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Вернуться в меню продуктов из сообщения"""
+async def advanced_search_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Меню расширенного поиска с фильтрами"""
+    query = update.callback_query
+    await query.answer()
+    
     keyboard = [
-        [InlineKeyboardButton("📋 Все продукты", callback_data="all_products")],
-        [InlineKeyboardButton("🔍 Поиск по названию", callback_data="search_products")],
-        [InlineKeyboardButton("🆔 По ID продукта", callback_data="by_id")],
-        [InlineKeyboardButton("☕ Термокружка по ID", callback_data="thermocup_by_id")],
-        [InlineKeyboardButton("🔙 Назад", callback_data="back_to_main")],
+        [InlineKeyboardButton("🔍 Поиск по названию", callback_data="search_name")],
+        [InlineKeyboardButton("📂 Поиск по категории", callback_data="search_category")],
+        [InlineKeyboardButton("💰 Поиск по цене", callback_data="search_price_range")],
+        [InlineKeyboardButton("📦 Только в наличии", callback_data="search_in_stock")],
+        [InlineKeyboardButton("🔙 Назад", callback_data="back_to_products_menu")],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    await update.message.reply_text(
-        "📦 **Получить продукты**\nВыберите тип запроса:",
+    # ИСПРАВЛЕНИЕ: используем message.reply_text вместо reply_text
+    await query.message.reply_text(
+        "🎯 **Расширенный поиск**\n\n"
+        "Выберите тип поиска:",
         parse_mode='Markdown',
         reply_markup=reply_markup
     )

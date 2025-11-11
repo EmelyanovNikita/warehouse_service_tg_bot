@@ -31,8 +31,7 @@ from handlers import (
     update_stock_warehouse_process, update_stock_quantity_process,
     
     # Вспомогательные
-    get_products_menu_from_message, add_products_menu_from_message, 
-    update_products_menu_from_message, error_handler, show_more_products,
+    error_handler, show_more_products,
     
     # Состояния
     MAIN_MENU, GET_PRODUCTS_MENU, ADD_PRODUCT_MENU, UPDATE_PRODUCT_MENU,
