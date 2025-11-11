@@ -3,6 +3,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKe
 from telegram.ext import ContextTypes, ConversationHandler, MessageHandler, filters
 import logging
 from api_client import WarehouseAPIClient
+from typing import List, Dict
 
 logger = logging.getLogger(__name__)
 api_client = WarehouseAPIClient()
@@ -23,7 +24,7 @@ def truncate_message(text: str, max_length: int = 4096) -> str:
 
 # ===== ГЛАВНОЕ МЕНЮ =====
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Начало работы с ботом"""
+    """Начало работы с ботом - полный сброс"""
     user = update.message.from_user
     logger.info(f"User {user.first_name} started the conversation")
     
@@ -54,7 +55,7 @@ async def back_to_main(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    await query.edit_message_text(
+    await query.reply_text(
         "🏭 Главное меню управления складом\nВыберите действие:",
         reply_markup=reply_markup
     )
@@ -69,16 +70,15 @@ async def get_products_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     
     keyboard = [
         [InlineKeyboardButton("📋 Все продукты", callback_data="all_products")],
-        [InlineKeyboardButton("🔍 Поиск по названию", callback_data="search_products")],
-        [InlineKeyboardButton("🏷️ По категории", callback_data="by_category")],
-        [InlineKeyboardButton("💰 По цене", callback_data="by_price")],
+        [InlineKeyboardButton("🔍 Быстрый поиск", callback_data="search_products")],
+        [InlineKeyboardButton("🎯 Расширенный поиск", callback_data="advanced_search")],
         [InlineKeyboardButton("🆔 По ID продукта", callback_data="by_id")],
         [InlineKeyboardButton("☕ Термокружка по ID", callback_data="thermocup_by_id")],
         [InlineKeyboardButton("🔙 Назад", callback_data="back_to_main")],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    await query.edit_message_text(
+    await query.reply_text(
         "📦 **Получить продукты**\nВыберите тип запроса:",
         parse_mode='Markdown',
         reply_markup=reply_markup
@@ -86,76 +86,66 @@ async def get_products_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     
     return GET_PRODUCTS_MENU
 
-# async def get_all_products(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-#     """Получить все продукты"""
-#     query = update.callback_query
-#     await query.answer()
+def format_products_message(products: List[Dict], title: str = "Продукты") -> List[str]:
+    """
+    Форматирует список продуктов в сообщения для Telegram
+    Возвращает список сообщений (если не помещается в одно)
+    """
+    messages = []
+    current_message = f"📦 {title}:\n\n"
     
-#     products = await api_client.get_products(limit=50)
+    for product in products:
+        # Извлекаем данные в переменные
+        product_id = str(product.get('id', 'N/A'))
+        product_name = product.get('name', 'Без названия')
+        product_sku = product.get('sku', 'Не указан')
+        product_category = product.get('category_name', 'Не указана')
+        product_quantity = product.get('total_quantity', 0)
+        product_price = product.get('base_price', 0)
+        
+        # Форматируем цену
+        formatted_price = f"${product_price:.2f}"
+        
+        # Создаем разделитель
+        separator = "─" * 20
+        
+        # Формируем текст продукта из переменных
+        product_text = (
+            f"🆔 ID: {product_id}\n"
+            f"📝 Название: {product_name}\n"
+            f"🏷️ Артикул: {product_sku}\n"
+            f"📂 Категория: {product_category}\n"
+            f"📊 Количество: {product_quantity} шт.\n"
+            f"💰 Цена: {formatted_price}\n"
+            f"{separator}\n"
+        )
+        
+        # Проверяем не превысим ли лимит Telegram
+        if len(current_message) + len(product_text) > 3500:
+            messages.append(current_message)
+            current_message = "📦 Продолжение:\n\n" + product_text
+        else:
+            current_message += product_text
     
-#     if not products:
-#         await query.edit_message_text("❌ Нет продуктов на складе")
-#         return GET_PRODUCTS_MENU
+    # Добавляем последнее сообщение
+    if current_message and current_message != f"📦 {title}:\n\n":
+        messages.append(current_message)
     
-#     message = "📦 **Все продукты:**\n\n"
-#     for product in products:
-#         message += (
-#             f"**ID:** {product.get('id', 'N/A')}\n"
-#             f"**Название:** {product.get('name', 'Без названия')}\n"
-#             f"**Категория:** {product.get('category', 'Не указана')}\n"
-#             f"**Количество:** {product.get('quantity', 0)}\n"
-#             f"**Цена:** ${product.get('price', 0):.2f}\n"
-#             "─" * 20 + "\n"
-#         )
-    
-#     message = truncate_message(message)
-#     keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="back_to_products_menu")]]
-#     reply_markup = InlineKeyboardMarkup(keyboard)
-    
-#     await query.edit_message_text(message, parse_mode='Markdown', reply_markup=reply_markup)
-#     return GET_PRODUCTS_MENU
-
-# async def get_all_products(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-#     """Получить все продукты"""
-#     query = update.callback_query
-#     await query.answer()
-    
-#     products = await api_client.get_products(limit=50)
-    
-#     if not products:
-#         await query.edit_message_text("❌ Нет продуктов на складе")
-#         return GET_PRODUCTS_MENU
-    
-#     message = "📦 **Все продукты:**\n\n"
-    
-#     for product in products:
-#         message += (
-#             f"**ID:** {product.get('id', 'N/A')}\n"
-#             f"**Название:** {product.get('name', 'Без названия')}\n"
-#             f"**Артикул:** {product.get('sku', 'Не указан')}\n"
-#             f"**Категория:** {product.get('category_name', 'Не указана')}\n"
-#             f"**Количество:** {product.get('total_quantity', 0)}\n"
-#             f"**Цена:** ${product.get('base_price', 0):.2f}\n"
-#             f"**Статус:** {'✅ Активен' if product.get('is_active', True) else '❌ Неактивен'}\n"
-#             "─" * 30 + "\n"
-#         )
-    
-#     message = truncate_message(message)
-#     keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="back_to_products_menu")]]
-#     reply_markup = InlineKeyboardMarkup(keyboard)
-    
-#     await query.edit_message_text(message, parse_mode='Markdown', reply_markup=reply_markup)
-#     return GET_PRODUCTS_MENU
+    return messages
 
 async def get_all_products(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Получить все продукты - простая версия с пошаговым выводом"""
     query = update.callback_query
     await query.answer()
     
-    products = await api_client.get_products(limit=100)
+    products = await api_client.get_products(
+        limit=100,
+        include_inactive=False,
+        include_out_of_stock=True
+    )
     
     if not products:
-        await query.edit_message_text("❌ Нет продуктов на складе")
+        await query.reply_text("❌ Нет продуктов на складе")
         return GET_PRODUCTS_MENU
 
     # Формируем сообщения
@@ -212,7 +202,11 @@ async def show_next_product_message(update: Update, context: ContextTypes.DEFAUL
     current_index = context.user_data.get('current_message_index', 0)
     
     if not messages or current_index >= len(messages):
-        await update.callback_query.edit_message_text("❌ Нет данных для отображения")
+        # Определяем откуда пришел запрос
+        if update.callback_query:
+            await update.callback_query.message.reply_text("❌ Нет данных для отображения")
+        else:
+            await update.message.reply_text("❌ Нет данных для отображения")
         return GET_PRODUCTS_MENU
     
     current_message = messages[current_index]
@@ -228,16 +222,19 @@ async def show_next_product_message(update: Update, context: ContextTypes.DEFAUL
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     
+    # Определяем откуда пришел запрос и отправляем сообщение
     if update.callback_query:
-        # УБИРАЕМ parse_mode='Markdown' для сообщений с продуктами
-        await update.callback_query.edit_message_text(
+        # Если это callback от кнопки
+        await update.callback_query.message.reply_text(
             current_message, 
-            reply_markup=reply_markup  # убрали parse_mode
+            reply_markup=reply_markup
         )
+        await update.callback_query.answer()
     else:
+        # Если это текстовое сообщение
         await update.message.reply_text(
             current_message,
-            reply_markup=reply_markup  # убрали parse_mode
+            reply_markup=reply_markup
         )
     
     return GET_PRODUCTS_MENU
@@ -254,43 +251,378 @@ async def show_more_products(update: Update, context: ContextTypes.DEFAULT_TYPE)
     return await show_next_product_message(update, context)
 
 async def search_products_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Начать поиск по названию"""
+    """Начать поиск по названию через API фильтры"""
     query = update.callback_query
     await query.answer()
     
-    await query.edit_message_text(
-        "🔍 **Поиск продуктов по названию**\n\n"
-        "Введите поисковый запрос:"
+    await query.reply_text(
+        "🔍 **Поиск продуктов**\n\n"
+        "Введите название продукта или часть названия:\n"
+        "• Можно вводить неполное название\n" 
+        "• Регистр не имеет значения\n"
+        "• Поиск по всем товарам в базе",
+        parse_mode='Markdown'
     )
     
     return ENTER_SEARCH_QUERY
 
 async def search_products_process(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Обработать поисковый запрос"""
-    search_query = update.message.text
+    """Обработать поисковый запрос через API фильтры"""
+    search_query = update.message.text.strip()
     
-    products = await api_client.get_products(search=search_query, limit=50)
+    if not search_query:
+        await update.message.reply_text("❌ Пожалуйста, введите поисковый запрос")
+        return ENTER_SEARCH_QUERY
     
-    if not products:
-        await update.message.reply_text(f"❌ Продукты по запросу '{search_query}' не найдены")
-        return await get_products_menu_from_message(update, context)
+    if len(search_query) < 2:
+        await update.message.reply_text("❌ Запрос должен содержать минимум 2 символа")
+        return ENTER_SEARCH_QUERY
     
-    message = f"🔍 **Результаты поиска '{search_query}':**\n\n"
-    for product in products:
-        message += (
-            f"**ID:** {product.get('id', 'N/A')}\n"
-            f"**Название:** {product.get('name', 'Без названия')}\n"
-            f"**Артикул:** {product.get('sku', 'Не указан')}\n"
-            f"**Количество:** {product.get('total_quantity', 0)}\n"
-            f"**Цена:** ${product.get('base_price', 0):.2f}\n"
-            "─" * 20 + "\n"
+    # Показываем индикатор поиска
+    search_message = await update.message.reply_text(f"🔍 Ищу \"{search_query}\"...")
+    
+    try:
+        # Используем встроенный поиск API
+        products = await api_client.get_products(
+            search=search_query,
+            limit=50,  # Ограничиваем количество результатов
+            include_inactive=False,  # Только активные товары
+            include_out_of_stock=True  # Показываем даже отсутствующие
+        )
+        
+        if not products:
+            # Пробуем поискать без учета регистра и с частичным совпадением
+            products = await api_client.get_products(
+                search=search_query.lower(),
+                limit=50,
+                include_inactive=False,
+                include_out_of_stock=True
+            )
+        
+        if not products:
+            # Предлагаем альтернативы - ищем похожие товары
+            all_products = await api_client.get_products(limit=100)
+            similar_products = await find_similar_products(all_products, search_query)
+            
+            if similar_products:
+                message = (
+                    f"❌ По запросу \"{search_query}\" ничего не найдено.\n\n"
+                    f"💡 Возможно, вы искали:\n"
+                )
+                
+                for i, product in enumerate(similar_products[:3]):
+                    message += f"• {product.get('name')} (ID: {product.get('id')})\n"
+                
+                message += f"\nПопробуйте один из этих вариантов или уточните запрос."
+            else:
+                message = (
+                    f"❌ По запросу \"{search_query}\" ничего не найдено.\n\n"
+                    f"💡 Попробуйте:\n"
+                    f"• Ввести другое название\n"
+                    f"• Использовать часть названия\n"
+                    f"• Проверить правильность написания\n"
+                    f"• Поискать по ID продукта"
+                )
+            
+            await search_message.reply_text(message)
+            return await get_products_menu_from_message(update, context)
+        
+        # Формируем сообщение с результатами
+        if len(products) == 1:
+            message = f"✅ Найден 1 продукт по запросу \"{search_query}\":\n\n"
+        else:
+            message = f"✅ Найдено {len(products)} продуктов по запросу \"{search_query}\":\n\n"
+        
+        for product in products:
+            # Определяем эмодзи статуса
+            status_emoji = "✅" if product.get('is_active', True) else "❌"
+            stock_emoji = "📦" if product.get('total_quantity', 0) > 0 else "📭"
+            
+            message += (
+                f"{status_emoji}{stock_emoji} ID: {product.get('id', 'N/A')}\n"
+                f"📝 Название: {product.get('name', 'Без названия')}\n"
+                f"🏷️ Артикул: {product.get('sku', 'Не указан')}\n"
+                f"📂 Категория: {product.get('category_name', 'Не указана')}\n"
+                f"📊 Количество: {product.get('total_quantity', 0)} шт.\n"
+                f"💰 Цена: ${product.get('base_price', 0):.2f}\n"
+                "─" * 30 + "\n"
+            )
+        
+        # Если много результатов, предлагаем уточнить запрос
+        if len(products) >= 50:
+            message += f"\n💡 Найдено много результатов. Уточните запрос для более точного поиска."
+        
+        # Обрезаем если слишком длинное
+        if len(message) > 4000:
+            message = message[:3900] + "\n\n... (результаты обрезаны, уточните запрос)"
+        
+        keyboard = [
+            [InlineKeyboardButton("🔍 Новый поиск", callback_data="search_products")],
+            [InlineKeyboardButton("🔙 В меню", callback_data="back_to_products_menu")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await search_message.reply_text(message, reply_markup=reply_markup)
+        
+    except Exception as e:
+        logger.error(f"Search error: {e}")
+        await search_message.reply_text(
+            "❌ Произошла ошибка при поиске. Пожалуйста, попробуйте позже."
         )
     
-    message = truncate_message(message)
-    keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="back_to_products_menu")]]
+    return GET_PRODUCTS_MENU
+
+async def find_similar_products(products, search_query):
+    """Находит похожие продукты на основе простого сравнения строк"""
+    if not products or not search_query:
+        return []
+    
+    search_lower = search_query.lower()
+    similar = []
+    
+    for product in products:
+        product_name = product.get('name', '').lower()
+        
+        # Простой алгоритм схожести - можно улучшить
+        if (len(search_lower) >= 3 and 
+            (search_lower in product_name or 
+             any(word.startswith(search_lower[:3]) for word in product_name.split()))):
+            similar.append(product)
+    
+    return similar[:5]  # Возвращаем до 5 похожих продуктов
+
+async def advanced_search_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Меню расширенного поиска с фильтрами"""
+    query = update.callback_query
+    await query.answer()
+    
+    keyboard = [
+        [InlineKeyboardButton("🔍 Поиск по названию", callback_data="search_name")],
+        [InlineKeyboardButton("📂 Поиск по категории", callback_data="search_category")],
+        [InlineKeyboardButton("💰 Поиск по цене", callback_data="search_price_range")],
+        [InlineKeyboardButton("📦 Только в наличии", callback_data="search_in_stock")],
+        [InlineKeyboardButton("🔙 Назад", callback_data="back_to_products_menu")],
+    ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    await update.message.reply_text(message, parse_mode='Markdown', reply_markup=reply_markup)
+    await query.reply_text(
+        "🎯 **Расширенный поиск**\n\n"
+        "Выберите тип поиска:",
+        parse_mode='Markdown',
+        reply_markup=reply_markup
+    )
+    
+    return GET_PRODUCTS_MENU
+
+async def search_by_category_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Поиск по категории"""
+    query = update.callback_query
+    await query.answer()
+    
+    await query.reply_text(
+        f"📂 **Поиск по категории**\n\n"
+        f"Введите название категории:\n\n"
+        f"Пример: Thermocups",
+        parse_mode='Markdown'
+    )
+    
+    return ENTER_CATEGORY  # ← ИЗМЕНИТЬ НА НОВОЕ СОСТОЯНИЕ
+
+async def search_by_category_process(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Обработать поиск по категории через API"""
+    category_query = update.message.text.strip()
+    
+    if not category_query:
+        await update.message.reply_text("❌ Пожалуйста, введите название категории")
+        return ENTER_SEARCH_QUERY
+    
+    search_message = await update.message.reply_text(f"📂 Ищу категорию \"{category_query}\"...")
+    
+    try:
+        # ПРОСТО API запрос с параметром category
+        products = await api_client.get_products(
+            category=category_query,
+            limit=50,
+            include_inactive=False,
+            include_out_of_stock=True
+        )
+        
+        if not products:
+            await search_message.reply_text(f"❌ В категории \"{category_query}\" товаров не найдено")
+            return await get_products_menu_from_message(update, context)
+        
+        message = f"📂 Продукты в категории \"{category_query}\":\n\n"
+        
+        for product in products:
+            # Заполняем данные через переменные
+            product_id = product.get('id', 'N/A')
+            product_name = product.get('name', 'Без названия')
+            product_quantity = product.get('total_quantity', 0)
+            product_price = product.get('base_price', 0)
+            
+            # Форматируем цену
+            formatted_price = f"${product_price:.2f}"
+            
+            # Создаем разделитель
+            separator = "─" * 25
+            
+            # Формируем сообщение из переменных
+            message += (
+                f"🆔 ID: {product_id}\n"
+                f"📝 Название: {product_name}\n"
+                f"📊 Количество: {product_quantity} шт.\n"
+                f"💰 Цена: {formatted_price}\n"
+                f"{separator}\n"
+            )
+        
+        if len(message) > 4000:
+            message = message[:3900] + "\n\n... (результаты обрезаны)"
+        
+        keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="back_to_products_menu")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await search_message.reply_text(message, reply_markup=reply_markup)
+        
+    except Exception as e:
+        logger.error(f"Category search error: {e}")
+        await search_message.reply_text("❌ Ошибка при поиске по категории")
+    
+    return GET_PRODUCTS_MENU
+
+async def search_by_price_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Поиск по диапазону цен"""
+    query = update.callback_query
+    await query.answer()
+    
+    await query.reply_text(
+        "💰 **Поиск по цене**\n\n"
+        "Введите диапазон цен в формате:\n"
+        "`мин_цена - макс_цена`\n\n"
+        "Примеры:\n"
+        "`0 - 100` - товары до $100\n"
+        "`50 - 200` - товары от $50 до $200\n"
+        "`1000 - ` - товары от $1000\n"
+        "` - 50` - товары до $50",
+        parse_mode='Markdown'
+    )
+    
+    return ENTER_SEARCH_QUERY
+
+async def search_by_price_process(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Обработать поиск по цене через API"""
+    price_query = update.message.text.strip()
+    
+    search_message = await update.message.reply_text(f"💰 Анализирую диапазон цен...")
+    
+    try:
+        # Парсим диапазон цен
+        if ' - ' in price_query:
+            min_str, max_str = price_query.split(' - ', 1)
+            min_price = float(min_str) if min_str.strip() else None
+            max_price = float(max_str) if max_str.strip() else None
+        else:
+            await search_message.reply_text("❌ Неверный формат. Используйте: мин_цена - макс_цена")
+            return ENTER_SEARCH_QUERY
+        
+        # ПРОСТО API запрос с параметрами min_price и max_price
+        products = await api_client.get_products(
+            min_price=min_price,
+            max_price=max_price,
+            limit=50,
+            include_inactive=False,
+            include_out_of_stock=True
+        )
+        
+        if not products:
+            range_text = ""
+            if min_price and max_price:
+                range_text = f"от ${min_price} до ${max_price}"
+            elif min_price:
+                range_text = f"от ${min_price}"
+            elif max_price:
+                range_text = f"до ${max_price}"
+            
+            await search_message.reply_text(f"❌ В диапазоне {range_text} товаров не найдено")
+            return await get_products_menu_from_message(update, context)
+        
+        range_text = ""
+        if min_price and max_price:
+            range_text = f"от ${min_price} до ${max_price}"
+        elif min_price:
+            range_text = f"от ${min_price}"
+        elif max_price:
+            range_text = f"до ${max_price}"
+        
+        message = f"💰 Продукты в диапазоне {range_text}:\n\n"
+        
+        for product in products:
+            message += (
+                f"🆔 ID: {product.get('id', 'N/A')}\n"
+                f"📝 Название: {product.get('name', 'Без названия')}\n"
+                f"💰 Цена: ${product.get('base_price', 0):.2f}\n"
+                f"📊 Количество: {product.get('total_quantity', 0)} шт.\n"
+                "─" * 25 + "\n"
+            )
+        
+        if len(message) > 4000:
+            message = message[:3900] + "\n\n... (результаты обрезаны)"
+        
+        keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="back_to_products_menu")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await search_message.reply_text(message, reply_markup=reply_markup)
+        
+    except ValueError:
+        await search_message.reply_text("❌ Неверный формат цен. Используйте числа")
+        return ENTER_SEARCH_QUERY
+    except Exception as e:
+        logger.error(f"Price search error: {e}")
+        await search_message.reply_text("❌ Ошибка при поиске по цене")
+    
+    return GET_PRODUCTS_MENU
+
+async def search_in_stock_only(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Показать только товары в наличии через API"""
+    query = update.callback_query
+    await query.answer()
+    
+    search_message = await query.reply_text("📦 Ищу товары в наличии...")
+    
+    try:
+        # ПРОСТО API запрос с параметром include_out_of_stock=False
+        products = await api_client.get_products(
+            include_out_of_stock=False,  # Только товары в наличии
+            limit=50,
+            include_inactive=False
+        )
+        
+        if not products:
+            await search_message.reply_text("❌ Нет товаров в наличии")
+            return GET_PRODUCTS_MENU
+        
+        message = "📦 **Товары в наличии:**\n\n"
+        
+        for product in products:
+            message += (
+                f"🆔 ID: {product.get('id', 'N/A')}\n"
+                f"📝 Название: {product.get('name', 'Без названия')}\n"
+                f"📊 Количество: {product.get('total_quantity', 0)} шт.\n"
+                f"💰 Цена: ${product.get('base_price', 0):.2f}\n"
+                "─" * 25 + "\n"
+            )
+        
+        if len(message) > 4000:
+            message = message[:3900] + "\n\n... (результаты обрезаны)"
+        
+        keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="back_to_products_menu")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await search_message.reply_text(message, reply_markup=reply_markup)
+        
+    except Exception as e:
+        logger.error(f"In-stock search error: {e}")
+        await search_message.reply_text("❌ Ошибка при поиске товаров в наличии")
+    
     return GET_PRODUCTS_MENU
 
 async def get_thermocup_by_id_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -301,7 +633,7 @@ async def get_thermocup_by_id_start(update: Update, context: ContextTypes.DEFAUL
     # ДОБАВЬ ЭТУ СТРОЧКУ ↓
     context.user_data['request_type'] = 'thermocup'
     
-    await query.edit_message_text(
+    await query.reply_text(
         "☕ **Получить термокружку по ID**\n\n"
         "Введите ID термокружки:"
     )
@@ -316,7 +648,7 @@ async def get_product_by_id_start(update: Update, context: ContextTypes.DEFAULT_
     # ДОБАВЬ ЭТУ СТРОЧКУ ↓
     context.user_data['request_type'] = 'product'
     
-    await query.edit_message_text(
+    await query.reply_text(
         "🆔 **Получить продукт по ID**\n\n"
         "Введите ID продукта:"
     )
@@ -373,7 +705,7 @@ async def add_products_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    await query.edit_message_text(
+    await query.reply_text(
         "➕ **Добавить продукты**\nВыберите тип продукта:",
         parse_mode='Markdown',
         reply_markup=reply_markup
@@ -386,7 +718,7 @@ async def add_thermocup_start(update: Update, context: ContextTypes.DEFAULT_TYPE
     query = update.callback_query
     await query.answer()
     
-    await query.edit_message_text(
+    await query.reply_text(
         "☕ **Добавить новую термокружку**\n\n"
         "Введите данные в формате:\n"
         "`Название | Категория ID | Цена | Количество | Склад ID | Объем(мл) | Цвет | Бренд`\n\n"
@@ -458,7 +790,7 @@ async def update_products_menu(update: Update, context: ContextTypes.DEFAULT_TYP
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    await query.edit_message_text(
+    await query.reply_text(
         "🔄 **Обновить продукты**\nВыберите действие:",
         parse_mode='Markdown',
         reply_markup=reply_markup
@@ -471,7 +803,7 @@ async def update_thermocup_start(update: Update, context: ContextTypes.DEFAULT_T
     query = update.callback_query
     await query.answer()
     
-    await query.edit_message_text(
+    await query.reply_text(
         "✏️ **Обновить термокружку**\n\n"
         "Введите ID термокружки для обновления:"
     )
@@ -543,7 +875,7 @@ async def update_reserved_start(update: Update, context: ContextTypes.DEFAULT_TY
     query = update.callback_query
     await query.answer()
     
-    await query.edit_message_text(
+    await query.reply_text(
         "📦 **Обновить количество зарезервированного товара**\n\n"
         "Введите ID продукта:"
     )
@@ -601,7 +933,7 @@ async def update_stock_start(update: Update, context: ContextTypes.DEFAULT_TYPE)
     query = update.callback_query
     await query.answer()
     
-    await query.edit_message_text(
+    await query.reply_text(
         "🏭 **Обновить количество товара на складе**\n\n"
         "Введите ID продукта:"
     )

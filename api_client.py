@@ -18,6 +18,12 @@ class WarehouseAPIClient:
         """Универсальный метод для выполнения запросов к API"""
         url = f"{self.base_url}/{endpoint.lstrip('/')}"
         
+        # Логируем параметры для отладки
+        if 'params' in kwargs:
+            logger.info(f"Request params: {kwargs['params']}")
+        if 'json' in kwargs:
+            logger.info(f"Request JSON: {kwargs['json']}")
+        
         try:
             async with aiohttp.ClientSession(timeout=self.timeout) as session:
                 async with session.request(method, url, **kwargs) as response:
@@ -26,7 +32,7 @@ class WarehouseAPIClient:
                         return {"success": True}
                     
                     if response.status >= 400:
-                        logger.error(f"API error {response.status}")
+                        logger.error(f"API error {response.status}: {await response.text()}")
                         return None
                     
                     return await response.json()
@@ -36,31 +42,27 @@ class WarehouseAPIClient:
             return None
 
     # GET методы
+    def _prepare_api_params(self, filters: Dict) -> Dict[str, str]:
+        """Преобразует параметры фильтров в строки для API"""
+        params = {}
+        for key, value in filters.items():
+            if value is not None:
+                if isinstance(value, bool):
+                    params[key] = str(value).lower()
+                elif isinstance(value, (int, float)):
+                    params[key] = str(value)
+                else:
+                    params[key] = str(value)
+        return params
+
     async def get_products(self, **filters) -> Optional[List[Dict]]:
         """Получить список товаров с фильтрами"""
-        params = {}
-        if filters.get('category'):
-            params['category'] = filters['category']
-        if filters.get('min_price'):
-            params['min_price'] = filters['min_price']
-        if filters.get('max_price'):
-            params['max_price'] = filters['max_price']
-        if filters.get('search'):
-            params['search'] = filters['search']
-        if filters.get('include_inactive'):
-            params['include_inactive'] = filters['include_inactive']
-        if filters.get('include_out_of_stock'):
-            params['include_out_of_stock'] = filters['include_out_of_stock']
-        if filters.get('limit'):
-            params['limit'] = filters['limit']
-        if filters.get('offset'):
-            params['offset'] = filters['offset']
-
+        params = self._prepare_api_params(filters)
+        
         logger.info(f"Making API request to /products with params: {params}")
         result = await self._make_request("GET", "products", params=params)
-        logger.info(f"API response: {result}")
-
-        # return await self._make_request("GET", "products", params=params)
+        logger.info(f"API response type: {type(result)}, length: {len(result) if result else 0}")
+        
         return result
 
     async def get_product_by_id(self, product_id: int) -> Optional[Dict]:
